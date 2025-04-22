@@ -1,88 +1,93 @@
 # Prior Testnet Auto Bot
 
-This bot automates swapping PRIOR tokens for USDT/USDC on the Base Sepolia testnet to help users participate in the PRIOR airdrop activity.
+An automated bot for interacting with Prior Protocol's testnet on Base Sepolia. This bot helps users participate in the Prior Protocol testnet by automating the process of swapping PRIOR tokens to USDC.
 
-## Features
+## 🔍 Features
 
-- Support for multiple wallets through environment variables
-- Automatic approval of PRIOR tokens
-- Random amount swapping (between 0.001 and 0.002 PRIOR)
-- Random token selection (USDT or USDC)
-- Detailed transaction logging with status emojis
-- Balance checking for ETH, PRIOR, USDT, and USDC
+- Automatically swaps PRIOR tokens to USDC on Prior Protocol's testnet
+- Supports multiple wallets for batch processing
+- Optional proxy support for IP rotation
+- Automatic reporting of swap transactions to Prior Protocol's API
+- 24-hour cycle timer to maintain consistent activity
+- Error handling and automatic retries
 
-## Prerequisites
+## 🛠️ Prerequisites
 
 - Node.js (v14 or higher)
-- NPM or Yarn
-- Private keys for wallets with Base Sepolia ETH and PRIOR tokens
+- Prior tokens in your wallet(s) on Base Sepolia testnet
+- Private keys for your wallet(s)
 
-## Installation
+## ⚙️ Installation
 
 1. Clone the repository:
-
 ```bash
 git clone https://github.com/airdropinsiders/Prior-Testnet-Auto-Bot.git
+```
+
+2. Navigate to the project directory:
+```bash
 cd Prior-Testnet-Auto-Bot
 ```
 
-2. Install dependencies:
-
+3. Install dependencies:
 ```bash
 npm install
 ```
 
-3. Create a `.env` file in the project root with your private keys:
-
+4. Create a `.env` file in the root directory with your wallet private keys:
 ```
-PRIVATE_KEY_1=your_private_key_1
-PRIVATE_KEY_2=your_private_key_2
-PRIVATE_KEY_3=your_private_key_3
-# Add as many as you need
+WALLET_PK_1=your_private_key_1
+WALLET_PK_2=your_private_key_2
+# Add as many wallets as you need
 ```
 
-Alternatively, you can use a single key:
-
+5. (Optional) Create a `proxies.txt` file with your proxies (one per line):
 ```
-PRIVATE_KEY=your_private_key
+user:pass@ip:port
+ip:port
+http://user:pass@ip:port
 ```
 
-## Usage
+## 🚀 Usage
 
-Run the bot with:
-
+Start the bot by running:
 ```bash
 node index.js
 ```
 
 The bot will:
-1. Display all loaded wallets
-2. Ask how many swaps to perform per wallet
-3. Execute random swaps between PRIOR and USDT/USDC
-4. Show wallet balances before and after operations
+1. Load all wallets from your `.env` file
+2. Check PRIOR token balances
+3. Approve PRIOR token for swapping (if not already approved)
+4. Execute swaps of 0.1 PRIOR to USDC
+5. Report successful swaps to Prior Protocol's API
+6. Wait 24 hours before starting the next swap session
 
-## Smart Contract Addresses
+## ⚠️ Important Notes
 
-- PRIOR Token: 0xc19Ec2EEBB009b2422514C51F9118026f1cD89ba
-- USDT Token: 0x014397DaEa96CaC46DbEdcbce50A42D5e0152B2E
-- USDC Token: 0x109694D75363A75317A8136D80f50F871E81044e
-- Router: 0x0f1DADEcc263eB79AE3e4db0d57c49a8b6178B0B
+- Each wallet needs at least 0.1 PRIOR tokens for swapping
+- Make sure you have enough Base Sepolia ETH for gas fees
+- The bot targets 5 swaps per session before waiting for the next cycle
+- Keep your private keys secure and never share your `.env` file
 
-## Network
+## 🔗 Network Information
 
-- Base Sepolia Testnet (Chain ID: 84532)
-- RPC URL: https://base-sepolia-rpc.publicnode.com/...
+- Network: Base Sepolia Testnet
+- Prior Token: 0xeFC91C5a51E8533282486FA2601dFfe0a0b16EDb
+- USDC Token: 0xdB07b0b4E88D9D5A79A08E91fEE20Bb41f9989a2
+- Swap Router: 0x8957e1988905311EE249e679a29fc9deCEd4D910
 
-## Security Notice
+## 📋 Configuration
 
-- Keep your private keys safe
-- This bot is for testnet only
-- Never use your mainnet private keys
+You can modify the following parameters in the code:
+- MAX_SWAPS: Number of swaps to perform per session (default: 5)
+- Swap amount: Amount of PRIOR to swap (default: 0.1)
+- Countdown timer: Time between swap sessions (default: 24 hours)
 
-## Disclaimer
-
-This project is for educational purposes only. Use at your own risk. The developers are not responsible for any potential loss of funds.
-
-## License
+## 📝 License
 
 MIT
+
+## ⚠️ Disclaimer
+
+This bot is for educational purposes only. Use at your own risk. The developers are not responsible for any financial losses or other damages that may result from using this bot.

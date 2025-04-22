@@ -1,279 +1,323 @@
 require('dotenv').config();
-const ethers = require('ethers');
-const readline = require('readline');
+const fs = require('fs');
+const axios = require('axios');
+const { ethers } = require('ethers');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 
-const PRIOR_ADDRESS = '0xc19Ec2EEBB009b2422514C51F9118026f1cD89ba';
-const USDT_ADDRESS = '0x014397DaEa96CaC46DbEdcbce50A42D5e0152B2E';
-const USDC_ADDRESS = '0x109694D75363A75317A8136D80f50F871E81044e';
-
-const RPC_URL = 'https://base-sepolia-rpc.publicnode.com/89e4ff0f587fe2a94c7a2c12653f4c55d2bda1186cb6c1c95bd8d8408fbdc014';
+const colors = {
+  reset: '\x1b[0m',
+  cyan: '\x1b[36m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  red: '\x1b[31m',
+  white: '\x1b[37m',
+  bright: '\x1b[1m',
+  dim: '\x1b[2m',
+};
 
 const CHAIN_ID = 84532;
+const RPC_URL = 'https://base-sepolia-rpc.publicnode.com/89e4ff0f587fe2a94c7a2c12653f4c55d2bda1186cb6c1c95bd8d8408fbdc014';
+const EXPLORER_URL = 'https://base-sepolia.blockscout.com/';
+
+const PRIOR_TOKEN_ADDRESS = '0xeFC91C5a51E8533282486FA2601dFfe0a0b16EDb';
+const USDC_TOKEN_ADDRESS = '0xdB07b0b4E88D9D5A79A08E91fEE20Bb41f9989a2';
+const SWAP_ROUTER_ADDRESS = '0x8957e1988905311EE249e679a29fc9deCEd4D910';
 
 const ERC20_ABI = [
-  "function approve(address spender, uint256 amount) external returns (bool)",
-  "function balanceOf(address account) external view returns (uint256)",
-  "function allowance(address owner, address spender) external view returns (uint256)"
+  'function approve(address spender, uint256 amount) returns (bool)',
+  'function allowance(address owner, address spender) view returns (uint256)',
+  'function balanceOf(address account) view returns (uint256)',
+  'function decimals() view returns (uint8)'
 ];
 
-const ROUTER_ADDRESS = '0x0f1DADEcc263eB79AE3e4db0d57c49a8b6178B0B';
-
-const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
-
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
-
-const SYMBOLS = {
-  info: '📋',
-  success: '✅',
-  error: '❌',
-  warning: '⚠️',
-  pending: '⏳',
-  wallet: '💳',
-  eth: '💎',
-  prior: '🔶',
-  usdt: '💵',
-  usdc: '💰',
-  swap: '🔄',
-  approve: '🔑',
-  wait: '⌛',
-};
+function displayBanner() {
+  const bannerWidth = 54;
+  const line = '-'.repeat(bannerWidth);
+  console.log(`${colors.cyan}${line}${colors.reset}`);
+  console.log(`${colors.cyan}PRIOR TESTNET BOT - AIRDROP INSIDERS${colors.reset}`);
+  console.log(`${colors.cyan}${line}${colors.reset}`);
+}
 
 function loadWallets() {
   const wallets = [];
-  let index = 1;
+  let i = 1;
   
-  while (process.env[`PRIVATE_KEY_${index}`]) {
-    const privateKey = process.env[`PRIVATE_KEY_${index}`];
-    wallets.push({
-      privateKey,
-      wallet: new ethers.Wallet(privateKey, provider),
-      label: `Wallet ${index}`
-    });
-    index++;
+  while (process.env[`WALLET_PK_${i}`]) {
+    wallets.push(process.env[`WALLET_PK_${i}`]);
+    i++;
   }
   
-  if (wallets.length === 0 && process.env.PRIVATE_KEY) {
-    wallets.push({
-      privateKey: process.env.PRIVATE_KEY,
-      wallet: new ethers.Wallet(process.env.PRIVATE_KEY, provider),
-      label: 'Default Wallet'
-    });
+  if (wallets.length === 0) {
+    throw new Error('No wallet private keys found in .env file');
   }
   
+  console.log(`${colors.green}✅ Loaded ${wallets.length} wallets from .env${colors.reset}`);
   return wallets;
 }
 
-function getRandomAmount() {
-  return (Math.random() * 0.001 + 0.001).toFixed(6); 
-}
-
-function getRandomToken() {
-  return Math.random() < 0.5 ? 'USDT' : 'USDC';
-}
-
-async function approvePrior(walletObj, amount) {
-  const { wallet, label } = walletObj;
-  const priorContract = new ethers.Contract(PRIOR_ADDRESS, ERC20_ABI, wallet);
-  
+function loadProxies() {
   try {
-    const amountInWei = ethers.utils.parseUnits(amount, 18);
-
-    const currentAllowance = await priorContract.allowance(wallet.address, ROUTER_ADDRESS);
+    const proxyFile = fs.readFileSync('./proxies.txt', 'utf8');
+    const proxies = proxyFile.split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('#'));
     
-    if (currentAllowance.gte(amountInWei)) {
-      console.log(`${SYMBOLS.info} ${label} | Allowance for PRIOR already sufficient: ${ethers.utils.formatUnits(currentAllowance, 18)}`);
-      return true;
-    }
-
-    console.log(`${SYMBOLS.pending} ${label} | Approving PRIOR...`);
-    
-    const tx = await priorContract.approve(ROUTER_ADDRESS, amountInWei, {
-      gasLimit: 60000
-    });
-    
-    console.log(`${SYMBOLS.pending} ${label} | Approval transaction sent: ${tx.hash}`);
-
-    const receipt = await tx.wait();
-    console.log(`${SYMBOLS.success} ${label} | Approval confirmed in block ${receipt.blockNumber}`);
-    
-    return true;
-    
+    console.log(`${colors.green}✅ Loaded ${proxies.length} proxies from proxies.txt${colors.reset}`);
+    return proxies;
   } catch (error) {
-    console.log(`${SYMBOLS.error} ${label} | Error approving PRIOR: ${error.message}`);
-    return false;
+    console.log(`${colors.yellow}⚠️ No proxies.txt file found or error loading proxies: ${error.message}${colors.reset}`);
+    return [];
   }
 }
 
-async function swapPrior(walletObj, amount, tokenType) {
-  const { wallet, label } = walletObj;
+function createAxiosInstance(proxy = null) {
+  const config = {
+    timeout: 30000,
+    headers: {
+      'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36'
+    }
+  };
+  
+  if (proxy) {
+    let proxyUrl = proxy;
+
+    if (proxy.includes('@') && !proxy.startsWith('http')) {
+      proxyUrl = `http://${proxy}`;
+    } 
+    else if (!proxy.includes('@') && !proxy.startsWith('http')) {
+      proxyUrl = `http://${proxy}`;
+    }
+    
+    config.httpsAgent = new HttpsProxyAgent(proxyUrl);
+    console.log(`${colors.cyan}ℹ️ Using proxy: ${proxy}${colors.reset}`);
+  }
+  
+  return axios.create(config);
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function formatTime(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+async function countdown(seconds) {
+  console.log(`\n${colors.yellow}⏱️ Starting countdown for ${formatTime(seconds)}${colors.reset}`);
+  
+  for (let i = seconds; i > 0; i--) {
+    process.stdout.write(`\r${colors.yellow}⏱️ Time remaining: ${formatTime(i)} until next swap session${colors.reset}`);
+    await sleep(1000);
+  }
+  
+  console.log(`\n${colors.green}✅ Countdown completed. Starting new swap session.${colors.reset}`);
+}
+
+async function checkAndApproveToken(wallet, provider, walletIndex, proxy = null) {
+  const signer = new ethers.Wallet(wallet, provider);
+  const address = signer.address;
+  const shortAddress = `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+
+  console.log(`\n${colors.cyan}${'-'.repeat(60)}${colors.reset}`);
+  console.log(`${colors.cyan}🔹 WALLET #${walletIndex+1}: ${shortAddress}${colors.reset}`);
+  console.log(`${colors.cyan}${'-'.repeat(60)}${colors.reset}`);
+
+  const priorToken = new ethers.Contract(PRIOR_TOKEN_ADDRESS, ERC20_ABI, signer);
   
   try {
-    const amountInWei = ethers.utils.parseUnits(amount, 18);
+    const decimals = await priorToken.decimals();
+    const balance = await priorToken.balanceOf(address);
+    const formattedBalance = ethers.utils.formatUnits(balance, decimals);
+    
+    console.log(`${colors.white}💰 Balance: ${formattedBalance} PRIOR${colors.reset}`);
 
-    const approved = await approvePrior(walletObj, amount);
-    if (!approved) {
-      console.log(`${SYMBOLS.warning} ${label} | Approval failed, aborting swap`);
+    const swapAmount = ethers.utils.parseUnits('0.1', decimals);
+    if (balance.lt(swapAmount)) {
+      console.log(`${colors.red}❌ Insufficient PRIOR balance. Required: 0.1 PRIOR${colors.reset}`);
       return false;
     }
 
-    let txData;
-    if (tokenType === 'USDT') {
-      txData = '0x03b530a3' + ethers.utils.defaultAbiCoder.encode(['uint256'], [amountInWei]).slice(2);
+    const allowance = await priorToken.allowance(address, SWAP_ROUTER_ADDRESS);
+
+    if (allowance.lt(swapAmount)) {
+      console.log(`${colors.yellow}⏳ Approving PRIOR token...${colors.reset}`);
+
+      const maxApproval = ethers.constants.MaxUint256;
+      const tx = await priorToken.approve(SWAP_ROUTER_ADDRESS, maxApproval);
+      
+      console.log(`${colors.yellow}🔄 Approval transaction sent: ${tx.hash}${colors.reset}`);
+      await tx.wait();
+      console.log(`${colors.green}✅ Approval confirmed${colors.reset}`);
     } else {
-      txData = '0xf3b68002' + ethers.utils.defaultAbiCoder.encode(['uint256'], [amountInWei]).slice(2);
+      console.log(`${colors.green}✅ PRIOR token already approved${colors.reset}`);
     }
-
-    console.log(`${SYMBOLS.pending} ${label} | Swapping ${amount} PRIOR for ${tokenType}...`);
-    
-    const tx = await wallet.sendTransaction({
-      to: ROUTER_ADDRESS,
-      data: txData,
-      gasLimit: ethers.utils.hexlify(500000)
-    });
-    
-    console.log(`${SYMBOLS.pending} ${label} | Swap transaction sent: ${tx.hash}`);
-
-    const receipt = await tx.wait();
-    console.log(`${SYMBOLS.success} ${label} | Swap confirmed in block ${receipt.blockNumber}`);
     
     return true;
-    
   } catch (error) {
-    console.log(`${SYMBOLS.error} ${label} | Error swapping PRIOR for ${tokenType}: ${error.message}`);
+    console.error(`${colors.red}❌ Error in checkAndApproveToken: ${error.message}${colors.reset}`);
     return false;
   }
 }
 
-async function checkBalances(walletObj) {
-  const { wallet, label } = walletObj;
-  const priorContract = new ethers.Contract(PRIOR_ADDRESS, ERC20_ABI, wallet);
-  const usdtContract = new ethers.Contract(USDT_ADDRESS, ERC20_ABI, wallet);
-  const usdcContract = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, wallet);
+async function executeSwap(wallet, provider, swapCount, walletIndex, proxy = null) {
+  const signer = new ethers.Wallet(wallet, provider);
+  const address = signer.address;
+  const shortAddress = `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
   
   try {
-    console.log(`\n${SYMBOLS.wallet} ${label} (${wallet.address.substring(0, 6)}...${wallet.address.substring(38)}):`);
+    const priorToken = new ethers.Contract(PRIOR_TOKEN_ADDRESS, ERC20_ABI, signer);
+    const decimals = await priorToken.decimals();
+    const swapAmount = ethers.utils.parseUnits('0.1', decimals);
     
-    const priorBalance = await priorContract.balanceOf(wallet.address);
-    const usdtBalance = await usdtContract.balanceOf(wallet.address);
-    const usdcBalance = await usdcContract.balanceOf(wallet.address);
-    const ethBalance = await provider.getBalance(wallet.address);
+    console.log(`${colors.yellow}🔄 Executing swap #${swapCount} - Swapping 0.1 PRIOR to USDC...${colors.reset}`);
+
+    const swapData = '0x8ec7baf1000000000000000000000000000000000000000000000000016345785d8a0000';
+
+    const tx = await signer.sendTransaction({
+      to: SWAP_ROUTER_ADDRESS,
+      data: swapData,
+      gasLimit: 300000, 
+    });
     
-    console.log(`  ${SYMBOLS.eth} ETH: ${ethers.utils.formatEther(ethBalance)}`);
-    console.log(`  ${SYMBOLS.prior} PRIOR: ${ethers.utils.formatUnits(priorBalance, 18)}`);
-    console.log(`  ${SYMBOLS.usdt} USDT: ${ethers.utils.formatUnits(usdtBalance, 6)}`);
-    console.log(`  ${SYMBOLS.usdc} USDC: ${ethers.utils.formatUnits(usdcBalance, 6)}`);
+    console.log(`${colors.yellow}🔄 Swap transaction sent: ${tx.hash}${colors.reset}`);
+    const receipt = await tx.wait();
+    console.log(`${colors.green}✅ Swap confirmed in block ${receipt.blockNumber}${colors.reset}`);
+
+    await reportSwap(address, tx.hash, receipt.blockNumber, proxy);
     
+    return true;
   } catch (error) {
-    console.log(`${SYMBOLS.error} ${label} | Error checking balances: ${error.message}`);
+    console.error(`${colors.red}❌ Error in executeSwap: ${error.message}${colors.reset}`);
+    if (error.transaction) {
+      console.error(`${colors.red}Transaction details: ${JSON.stringify(error.transaction)}${colors.reset}`);
+    }
+    return false;
   }
 }
 
-function delay() {
-  console.log(`${SYMBOLS.wait} Waiting for 10 seconds...`);
-  return new Promise(resolve => setTimeout(resolve, 10000));
+async function reportSwap(walletAddress, txHash, blockNumber, proxy = null) {
+  try {
+    const apiUrl = "https://prior-protocol-testnet-priorprotocol.replit.app/api/transactions";
+    const axiosInstance = createAxiosInstance(proxy);
+    
+    const payload = {
+      userId: walletAddress.toLowerCase(),
+      type: "swap",
+      txHash: txHash,
+      fromToken: "PRIOR",
+      toToken: "USDC",
+      fromAmount: "0.1",
+      toAmount: "0.20",  
+      status: "completed",
+      blockNumber: blockNumber
+    };
+    
+    const response = await axiosInstance.post(apiUrl, payload, {
+      headers: {
+        "accept": "application/json",
+        "cache-control": "no-cache, no-store, must-revalidate",
+        "pragma": "no-cache",
+        "sec-ch-ua": "\"Brave\";v=\"135\", \"Not-A.Brand\";v=\"8\", \"Chromium\";v=\"135\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
+        "Referer": "https://testnetpriorprotocol.xyz/",
+        "Referrer-Policy": "strict-origin-when-cross-origin"
+      }
+    });
+    
+    console.log(`${colors.green}✅ Swap reported to API: ${response.status}${colors.reset}`);
+  } catch (error) {
+    console.error(`${colors.red}❌ Error reporting swap to API: ${error.message}${colors.reset}`);
+  }
 }
 
-async function runWalletSwaps(walletObj, count) {
-  const { label } = walletObj;
-  console.log(`\n${SYMBOLS.info} Starting ${count} swap operations for ${label}...`);
-  await checkBalances(walletObj);
+async function completeAllSwaps(wallets, proxies, provider) {
+  const MAX_SWAPS = 5;
+  let totalSwapsCompleted = 0;
   
-  let successCount = 0;
-  
-  for (let i = 0; i < count; i++) {
-    const amount = getRandomAmount();
-    const token = getRandomToken();
-    
-    console.log(`\n${SYMBOLS.swap} ${label} | Swap ${i+1}/${count}: ${amount} PRIOR for ${token}`);
-    
-    const success = await swapPrior(walletObj, amount, token);
-    if (success) successCount++;
-    
-    if (i < count - 1) {
-      await delay();
+  console.log(`\n${colors.bright}${colors.cyan}=== Starting swap session at ${new Date().toLocaleString()} ===${colors.reset}`);
+  console.log(`${colors.yellow}🎯 Target: ${MAX_SWAPS} swaps${colors.reset}`);
+
+  while (totalSwapsCompleted < MAX_SWAPS) {
+    let swapsCompletedThisRound = 0;
+
+    for (let i = 0; i < wallets.length && totalSwapsCompleted < MAX_SWAPS; i++) {
+      const wallet = wallets[i];
+      const proxy = proxies.length > 0 ? proxies[i % proxies.length] : null;
+
+      const isApproved = await checkAndApproveToken(wallet, provider, i, proxy);
+      
+      if (isApproved) {
+        const swapSuccessful = await executeSwap(wallet, provider, totalSwapsCompleted + 1, i, proxy);
+        
+        if (swapSuccessful) {
+          totalSwapsCompleted++;
+          swapsCompletedThisRound++;
+        }
+
+        if (totalSwapsCompleted < MAX_SWAPS && i < wallets.length - 1) {
+          console.log(`${colors.yellow}⏳ Waiting 15 seconds before next swap...${colors.reset}`);
+          await sleep(15000);
+        }
+      }
+
+      if (totalSwapsCompleted >= MAX_SWAPS) {
+        console.log(`\n${colors.green}🎉 Completed all ${MAX_SWAPS} swaps successfully${colors.reset}`);
+        break;
+      }
+    }
+
+    if (swapsCompletedThisRound === 0) {
+      const waitTime = 5 * 60; 
+      console.log(`${colors.yellow}⚠️ No swaps completed in this round. Waiting ${waitTime/60} minutes before trying again...${colors.reset}`);
+      console.log(`${colors.cyan}ℹ️ Current progress: ${totalSwapsCompleted}/${MAX_SWAPS} swaps completed${colors.reset}`);
+      await sleep(waitTime * 1000);
     }
   }
   
-  console.log(`\n${SYMBOLS.info} ${label} | Completed ${successCount}/${count} swap operations successfully`);
-  await checkBalances(walletObj);
-  return successCount;
-}
-
-async function runAllWallets(swapsPerWallet) {
-  const wallets = loadWallets();
-  let totalSuccess = 0;
-  let totalSwaps = swapsPerWallet * wallets.length;
-  
-  console.log(`\n${SYMBOLS.info} Found ${wallets.length} wallet(s)`);
-  
-  for (let i = 0; i < wallets.length; i++) {
-    const walletObj = wallets[i];
-    console.log(`\n${SYMBOLS.wallet} Processing wallet ${i+1}/${wallets.length}: ${walletObj.label}`);
-    const successes = await runWalletSwaps(walletObj, swapsPerWallet);
-    totalSuccess += successes;
-    
-    if (i < wallets.length - 1) {
-      await delay();
-    }
-  }
-  
-  console.log(`\n${SYMBOLS.info} All wallets processed. Total success: ${totalSuccess}/${totalSwaps}`);
+  return totalSwapsCompleted;
 }
 
 async function main() {
-  const cyan = '\x1b[36m';
-  const reset = '\x1b[0m';
-  
-  const banner = `
-${cyan}==========================================${reset}
-${cyan} PRIOR TESTNET AUTO BOT - AIRDROP INSIDERS ${reset}         
-${cyan}==========================================${reset}
-  `;
-  
-  console.log(banner);
-  console.log(`${SYMBOLS.info} Bot started on ${new Date().toISOString()}`);
-  
-  const wallets = loadWallets();
-  if (wallets.length === 0) {
-    console.log(`${SYMBOLS.error} No wallets found. Please check your .env file.`);
-    console.log(`Format should be:`);
-    console.log(`PRIVATE_KEY_1=your_private_key_1`);
-    console.log(`PRIVATE_KEY_2=your_private_key_2`);
-    process.exit(1);
-  }
-  
-  console.log(`${SYMBOLS.wallet} Loaded ${wallets.length} wallet(s):`);
-  wallets.forEach((w, i) => {
-    console.log(`  ${i+1}. ${w.label} (${w.wallet.address.substring(0, 6)}...${w.wallet.address.substring(38)})`);
-  });
-  
-  rl.question(`\n${SYMBOLS.info} How many swaps to perform per wallet? `, async (answer) => {
-    const swapCount = parseInt(answer);
+  try {
+    const wallets = loadWallets();
+    const proxies = loadProxies();
+
+    const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
     
-    if (isNaN(swapCount) || swapCount <= 0) {
-      console.log(`${SYMBOLS.error} Please provide a valid number of swaps`);
-      rl.close();
-      process.exit(1);
+    console.log(`\n${colors.cyan}${'-'.repeat(60)}${colors.reset}`);
+    console.log(`${colors.cyan}🔹 CHAIN INFO${colors.reset}`);
+    console.log(`${colors.cyan}${'-'.repeat(60)}${colors.reset}`);
+    console.log(`${colors.white}🔗 Network: Base Sepolia Testnet${colors.reset}`);
+    console.log(`${colors.white}🔄 Swap Router: ${SWAP_ROUTER_ADDRESS}${colors.reset}`);
+    console.log(`${colors.white}💠 PRIOR Token: ${PRIOR_TOKEN_ADDRESS}${colors.reset}`);
+    console.log(`${colors.white}💵 USDC Token: ${USDC_TOKEN_ADDRESS}${colors.reset}`);
+    console.log(`${colors.cyan}${'-'.repeat(60)}${colors.reset}\n`);
+    
+    while (true) {
+      const swapsCompleted = await completeAllSwaps(wallets, proxies, provider);
+      
+      console.log(`\n${colors.bright}${colors.green}=== Swap session completed ===${colors.reset}`);
+      console.log(`${colors.green}🎉 Total swaps completed: ${swapsCompleted}${colors.reset}`);
+      
+      await countdown(24 * 60 * 60); 
     }
-    
-    console.log(`${SYMBOLS.info} Will perform ${swapCount} swaps for each of ${wallets.length} wallet(s) (total: ${swapCount * wallets.length})`);
-    rl.question(`${SYMBOLS.info} Proceed? (y/n) `, async (confirm) => {
-      if (confirm.toLowerCase() === 'y' || confirm.toLowerCase() === 'yes') {
-        await runAllWallets(swapCount);
-      } else {
-        console.log(`${SYMBOLS.info} Operation canceled`);
-      }
-      rl.close();
-    });
-  });
+  } catch (error) {
+    console.error(`${colors.red}❌ Main process error: ${error}${colors.reset}`);
+    console.log(`${colors.yellow}⏳ Restarting bot in 1 minute...${colors.reset}`);
+    await sleep(60000);
+    main();
+  }
 }
 
-if (require.main === module) {
-  main().catch(error => {
-    console.log(`${SYMBOLS.error} Fatal error: ${error.message}`);
-    process.exit(1);
-  });
-}
+displayBanner();
+
+main().catch(error => {
+  console.error(`${colors.red}❌ Fatal error: ${error}${colors.reset}`);
+});
