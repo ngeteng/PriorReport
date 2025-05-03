@@ -105,8 +105,7 @@ function createAxiosInstance(proxy = null) {
     let proxyUrl = proxy;
     if (proxy.includes('@') && !proxy.startsWith('http')) {
       proxyUrl = `http://${proxy}`;
-    } 
-    else if (!proxy.includes('@') && !proxy.startsWith('http')) {
+    } else if (!proxy.includes('@') && !proxy.startsWith('http')) {
       proxyUrl = `http://${proxy}`;
     }
     
@@ -173,6 +172,16 @@ async function checkAndApproveToken(wallet, provider, walletIndex, proxy = null)
     if (!hasPriorBalance && !hasUsdcBalance) {
       console.log(`${colors.red}❌ Insufficient balance for both PRIOR and USDC.${colors.reset}`);
       console.log(`${colors.red}   Required: 0.1 PRIOR or 1 USDC${colors.reset}`);
+      return false;
+    }
+
+    const axiosInstance = createAxiosInstance(proxy);
+    const apiUrl = `${API_BASE_URL}/users/${address.toLowerCase()}`;
+    const response = await axiosInstance.get(apiUrl);
+    const userData = response.data;
+
+    if (userData.dailySwaps >= 5) {
+      console.log(`${colors.red}❌ Daily swap limit reached (5/5). Try again after daily reset.${colors.reset}`);
       return false;
     }
 
@@ -256,7 +265,7 @@ async function executeSwap(wallet, provider, swapCount, walletIndex, proxy = nul
       const receipt = await tx.wait();
       console.log(`${colors.green}✅ Swap confirmed in block ${receipt.blockNumber}${colors.reset}`);
       
-      await reportSwap(address, tx.hash, receipt.blockNumber, "PRIOR", "USDC", "0.1", "0.20", proxy);
+      await reportSwap(address, tx.hash, receipt.blockNumber, "PRIOR", "USDC", "0.1", proxy);
       
     } else {
       const usdcToken = new ethers.Contract(USDC_TOKEN_ADDRESS, ERC20_ABI, signer);
@@ -278,27 +287,35 @@ async function executeSwap(wallet, provider, swapCount, walletIndex, proxy = nul
       }
       
       console.log(`${colors.yellow}🔄 Executing swap #${swapCount} - Swapping 1 USDC to PRIOR...${colors.reset}`);
-      
-      const swapData = '0xe94e78a90000000000000000000000000000000000000000000000000000000000000001';
+
+      const swapData = '0xea0e435800000000000000000000000000000000000000000000000000000000000f4240';
       
       const tx = await signer.sendTransaction({
         to: SWAP_ROUTER_ADDRESS,
         data: swapData,
-        gasLimit: 300000,
+        gasLimit: 109139, 
       });
       
       console.log(`${colors.yellow}🔄 Swap transaction sent: ${tx.hash}${colors.reset}`);
       const receipt = await tx.wait();
+      
+      if (receipt.status === 0) {
+        throw new Error(`Transaction failed with status 0. Check contract revert reason.`);
+      }
+      
       console.log(`${colors.green}✅ Swap confirmed in block ${receipt.blockNumber}${colors.reset}`);
       
-      await reportSwap(address, tx.hash, receipt.blockNumber, "USDC", "PRIOR", "1", "0.5", proxy);
+      await reportSwap(address, tx.hash, receipt.blockNumber, "USDC", "PRIOR", "1", proxy);
     }
     
     return true;
   } catch (error) {
     console.error(`${colors.red}❌ Error in executeSwap: ${error.message}${colors.reset}`);
     if (error.transaction) {
-      console.error(`${colors.red}Transaction details: ${JSON.stringify(error.transaction)}${colors.reset}`);
+      console.error(`${colors.red}Transaction details: ${JSON.stringify(error.transaction, null, 2)}${colors.reset}`);
+    }
+    if (error.receipt) {
+      console.error(`${colors.red}Receipt details: ${JSON.stringify(error.receipt, null, 2)}${colors.reset}`);
     }
     
     if (swapDirection === 'PRIOR_TO_USDC') {
@@ -313,55 +330,33 @@ async function executeSwap(wallet, provider, swapCount, walletIndex, proxy = nul
   }
 }
 
-async function reportSwap(walletAddress, txHash, blockNumber, fromToken, toToken, fromAmount, toAmount, proxy = null) {
+async function reportSwap(walletAddress, txHash, blockNumber, fromToken, toToken, fromAmount, proxy = null) {
   try {
-    try {
-      const apiUrl = `${API_BASE_URL}/swap`;
-      const axiosInstance = createAxiosInstance(proxy);
-      
-      const payload = {
-        address: walletAddress.toLowerCase(),
-        amount: fromAmount,
-        tokenFrom: fromToken,
-        tokenTo: toToken,
-        txHash: txHash
-      };
-      
-      const response = await axiosInstance.post(apiUrl, payload, {
-        headers: {
-          "衫Referer": "https://priortestnet.xyz/swap"
-        }
-      });
-      
-      console.log(`${colors.green}✅ Swap reported to API: ${response.status}${colors.reset}`);
-    } catch (newApiError) {
-      console.log(`${colors.yellow}⚠️ Could not report to new API endpoint: ${newApiError.message}${colors.reset}`);
-    }
-
-    try {
-      const axiosInstance = createAxiosInstance(proxy);
-      const oldApiUrl = "https://prior-protocol-testnet-priorprotocol.replit.app/api/transactions";
-      const oldPayload = {
-        userId: walletAddress.toLowerCase(),
-        type: "swap",
-        txHash: txHash,
-        fromToken: fromToken,
-        toToken: toToken,
-        fromAmount: fromAmount,
-        toAmount: toAmount,
-        status: "completed",
-        blockNumber: blockNumber
-      };
-
-      const oldResponse = await axiosInstance.post(oldApiUrl, oldPayload);
-      console.log(`${colors.green}✅ Swap reported to old API: ${oldResponse.status}${colors.reset}`);
-    } catch (oldApiError) {
-      console.log(`${colors.yellow}⚠️ Could not report to old API endpoint: ${oldApiError.message}${colors.reset}`);
-    }
+    const apiUrl = `${API_BASE_URL}/swap`;
+    const axiosInstance = createAxiosInstance(proxy);
     
+    const payload = {
+      address: walletAddress.toLowerCase(),
+      amount: fromAmount,
+      tokenFrom: fromToken,
+      tokenTo: toToken,
+      txHash: txHash
+    };
+    
+    const response = await axiosInstance.post(apiUrl, payload, {
+      headers: {
+        "Referer": "https://priortestnet.xyz/swap"
+      }
+    });
+    
+    console.log(`${colors.green}✅ Swap reported to API: ${response.status}${colors.reset}`);
+    console.log(`${colors.white}📊 Points earned: ${response.data.pointsEarned}, Swaps remaining: ${response.data.swapsRemaining}${colors.reset}`);
     return true;
   } catch (error) {
     console.error(`${colors.red}❌ Error reporting swap to API: ${error.message}${colors.reset}`);
+    if (error.response && error.response.status === 400) {
+      console.log(`${colors.yellow}⚠️ Swap rejected: Likely due to invalid transaction or daily limit${colors.reset}`);
+    }
     return false;
   }
 }
@@ -497,49 +492,70 @@ async function performAllFaucetClaims(wallets, proxies, provider) {
 }
 
 async function completeAllSwaps(wallets, proxies, provider) {
-  const MAX_SWAPS = 5;
+  const MAX_SWAPS_PER_WALLET = 5;
   let totalSwapsCompleted = 0;
   
   console.log(`\n${colors.bright}${colors.cyan}=== Starting swap session at ${new Date().toLocaleString()} ===${colors.reset}`);
-  console.log(`${colors.yellow}🎯 Target: ${MAX_SWAPS} swaps${colors.reset}`);
+  console.log(`${colors.yellow}🎯 Target: Up to ${MAX_SWAPS_PER_WALLET} swaps per wallet${colors.reset}`);
 
-  while (totalSwapsCompleted < MAX_SWAPS) {
-    let swapsCompletedThisRound = 0;
+  for (let i = 0; i < wallets.length; i++) {
+    const wallet = wallets[i];
+    const proxy = proxies.length > 0 ? proxies[i % proxies.length] : null;
+    const signer = new ethers.Wallet(wallet, provider);
+    const address = signer.address;
+    const shortAddress = `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
 
-    for (let i = 0; i < wallets.length && totalSwapsCompleted < MAX_SWAPS; i++) {
-      const wallet = wallets[i];
-      const proxy = proxies.length > 0 ? proxies[i % proxies.length] : null;
+    let walletSwapsCompleted = 0;
 
-      const isApproved = await checkAndApproveToken(wallet, provider, i, proxy);
-      
-      if (isApproved) {
+    const axiosInstance = createAxiosInstance(proxy);
+    const apiUrl = `${API_BASE_URL}/users/${address.toLowerCase()}`;
+    const response = await axiosInstance.get(apiUrl);
+    const userData = response.data;
+
+    console.log(`\n${colors.cyan}🔹 Wallet #${i+1}: ${shortAddress}${colors.reset}`);
+    console.log(`${colors.white}Current daily swaps: ${userData.dailySwaps}/5${colors.reset}`);
+    console.log(`${colors.white}Total points: ${userData.totalPoints}${colors.reset}`);
+
+    if (userData.dailySwaps >= MAX_SWAPS_PER_WALLET) {
+      console.log(`${colors.yellow}⚠️ Wallet has reached daily swap limit (5/5). Skipping...${colors.reset}`);
+      continue;
+    }
+
+    const isApproved = await checkAndApproveToken(wallet, provider, i, proxy);
+    
+    if (isApproved) {
+      while (walletSwapsCompleted + userData.dailySwaps < MAX_SWAPS_PER_WALLET) {
         const swapSuccessful = await executeSwap(wallet, provider, totalSwapsCompleted + 1, i, proxy);
         
         if (swapSuccessful) {
+          walletSwapsCompleted++;
           totalSwapsCompleted++;
-          swapsCompletedThisRound++;
+
+          const updatedResponse = await axiosInstance.get(apiUrl);
+          const updatedUserData = updatedResponse.data;
+          if (updatedUserData.dailySwaps >= MAX_SWAPS_PER_WALLET) {
+            console.log(`${colors.yellow}⚠️ Daily swap limit reached for this wallet. Moving to next wallet...${colors.reset}`);
+            break;
+          }
+        } else {
+          console.log(`${colors.yellow}⚠️ Swap failed for wallet #${i+1}. Moving to next wallet...${colors.reset}`);
+          break;
         }
 
-        if (totalSwapsCompleted < MAX_SWAPS && i < wallets.length - 1) {
+        if (walletSwapsCompleted + userData.dailySwaps < MAX_SWAPS_PER_WALLET) {
           console.log(`${colors.yellow}⏳ Waiting 15 seconds before next swap...${colors.reset}`);
           await sleep(15000);
         }
       }
-
-      if (totalSwapsCompleted >= MAX_SWAPS) {
-        console.log(`\n${colors.green}🎉 Completed all ${MAX_SWAPS} swaps successfully${colors.reset}`);
-        break;
-      }
     }
 
-    if (swapsCompletedThisRound === 0) {
-      const waitTime = 5 * 60; 
-      console.log(`${colors.yellow}⚠️ No swaps completed in this round. Waiting ${waitTime/60} minutes before trying again...${colors.reset}`);
-      console.log(`${colors.cyan}ℹ️ Current progress: ${totalSwapsCompleted}/${MAX_SWAPS} swaps completed${colors.reset}`);
-      await sleep(waitTime * 1000);
+    if (i < wallets.length - 1) {
+      console.log(`${colors.yellow}⏳ Waiting 15 seconds before processing next wallet...${colors.reset}`);
+      await sleep(15000);
     }
   }
   
+  console.log(`\n${colors.green}🎉 Completed ${totalSwapsCompleted} swaps across all wallets${colors.reset}`);
   return totalSwapsCompleted;
 }
 
@@ -604,6 +620,7 @@ async function main() {
         console.log(`${colors.white}ID: ${userData.id}${colors.reset}`);
         console.log(`${colors.white}Total Points: ${userData.totalPoints}${colors.reset}`);
         console.log(`${colors.white}Daily Points: ${userData.dailyPoints}${colors.reset}`);
+        console.log(`${colors.white}Daily Swaps: ${userData.dailySwaps}/5${colors.reset}`);
         console.log(`${colors.white}Last Faucet Claim: ${userData.lastFaucetClaim || 'Never'}${colors.reset}`);
         console.log(`${colors.white}Is Admin: ${userData.isAdmin}${colors.reset}`);
       } catch (error) {
@@ -611,7 +628,7 @@ async function main() {
       }
 
       if (i < wallets.length - 1) {
-        await sleep(2000); 
+        await sleep(2000);
       }
     }
     console.log(`${colors.cyan}${'-'.repeat(60)}${colors.reset}`);
@@ -656,7 +673,7 @@ async function main() {
       }
     }
   } catch (error) {
-    console.error(`${colors.red}❌ Main process error: ${error}${colors.reset}`);
+    console.error(`${colors.red}❌ Main process error: ${error.message}${colors.reset}`);
     console.log(`${colors.yellow}⏳ Restarting bot in 1 minute...${colors.reset}`);
     await sleep(60000);
     main();
@@ -664,5 +681,5 @@ async function main() {
 }
 
 main().catch(error => {
-  console.error(`${colors.red}❌ Fatal error: ${error}${colors.reset}`);
+  console.error(`${colors.red}❌ Fatal error: ${error.message}${colors.reset}`);
 });
