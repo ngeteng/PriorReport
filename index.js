@@ -20,7 +20,7 @@ const colors = {
 };
 
 const CHAIN_ID = 84532;
-const RPC_URL = 'https://base-sepolia-rpc.publicnode.com/89e4ff0f587fe2a94c7a2c12653f4c55d2bda1186cb6c1c95bd8d8408fbdc014';
+const RPC_URL = 'https://base-sepolia.g.alchemy.com/v2/n8IrzxdL7dh_zcA_8MoTYcqrCLPMQAUv';
 const EXPLORER_URL = 'https://base-sepolia.blockscout.com/';
 
 const PRIOR_TOKEN_ADDRESS = '0xeFC91C5a51E8533282486FA2601dFfe0a0b16EDb';
