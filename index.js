@@ -578,15 +578,7 @@ function displayMenu() {
   console.log(`${colors.white} 0. Exit ${colors.reset}`);
   console.log(`${colors.cyan}${'-'.repeat(60)}${colors.reset}`);
   
-  const rl = 4;
-  
-  return new Promise((resolve) => {
-    rl.question(`${colors.yellow}Select an option (0-4): ${colors.reset}`, (answer) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
+  const answer = 4;
 
 async function main() {
   try {
