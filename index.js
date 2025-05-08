@@ -1,6 +1,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const axios = require('axios');
+const { sendReport } = require('./telegramReporter');
 const { ethers } = require('ethers');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const readline = require('readline');
