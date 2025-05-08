@@ -354,7 +354,7 @@ async function reportSwap(walletAddress, txHash, blockNumber, fromToken, toToken
     console.log(`${colors.white}📊 Points earned: ${response.data.pointsEarned}, Swaps remaining: ${response.data.swapsRemaining}${colors.reset}`);
     const { dailySwaps, totalPoints: points } = (await axiosInstance.get(`${API_BASE_URL}/users/${walletAddress.toLowerCase()}`)).data;
     await sendReport(
-      `🔄 *Swap Completed*\n` + 
+      `🔄 *Swap Completed* | Prior\n` + 
       `Wallet: \`${walletAddress}\`\n` +
       `Tx: \`${txHash}\`\n` +
       `Daily Swaps: *${dailySwaps}*\n` +
