@@ -569,16 +569,9 @@ async function completeAllSwaps(wallets, proxies, provider) {
 }
 
 function displayMenu() {
-  console.log(`${colors.cyan}${colors.bright}PRIOR TESTNET BOT MENU ${colors.reset}`);
-  console.log(`${colors.cyan}${'-'.repeat(60)}${colors.reset}`);
-  console.log(`${colors.white} 1. Claim faucet only ${colors.reset}`);
-  console.log(`${colors.white} 2. Perform 5 swaps only ${colors.reset}`);
-  console.log(`${colors.white} 3. Claim faucet and then perform 5 swaps ${colors.reset}`);
-  console.log(`${colors.white} 4. Start automatic daily routine (faucet + 5 swaps every 24h) ${colors.reset}`);
-  console.log(`${colors.white} 0. Exit ${colors.reset}`);
-  console.log(`${colors.cyan}${'-'.repeat(60)}${colors.reset}`);
-  
+
   const answer = 4;
+}
 
 async function main() {
   try {
