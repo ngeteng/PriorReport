@@ -578,10 +578,7 @@ function displayMenu() {
   console.log(`${colors.white} 0. Exit ${colors.reset}`);
   console.log(`${colors.cyan}${'-'.repeat(60)}${colors.reset}`);
   
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-  });
+  const rl = 4;
   
   return new Promise((resolve) => {
     rl.question(`${colors.yellow}Select an option (0-4): ${colors.reset}`, (answer) => {
